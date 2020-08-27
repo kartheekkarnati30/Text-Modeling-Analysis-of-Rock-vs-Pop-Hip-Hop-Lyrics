@@ -1,0 +1,506 @@
+---
+title: "Pop scraper"
+author: "Naga Santhosh Kartheek Karnati"
+date: "8/20/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(rvest)
+library(xml2)
+library(selectr)
+library(stringr)
+library(jsonlite)
+library(naniar)
+library(tokenizers)
+library(tidytext)
+library(dbplyr)
+library(tidyr)
+library(tibble)
+```
+
+
+#Scrape songs of modern pop and hip-hop/rap artists: Taylor Swift, rihanna, selena gomez, 
+#miley cyrus, adele, travis scott, john legend, shawn mendes, one direction, chris brown
+```{r}
+#Scrape songs of modern pop and hip-hop/rap artists: Taylor Swift, rihanna, selena gomez, 
+#miley cyrus, adele, travis scott, john legend, shawn mendes, one direction, chris brown
+```
+
+
+#Scraping song names
+```{r}
+urls <- c( "https://www.allthelyrics.com/lyrics/pink",
+           "https://www.allthelyrics.com/lyrics/rihanna",
+           "https://www.allthelyrics.com/lyrics/selena_gomez",
+           "https://www.allthelyrics.com/lyrics/miley_cyrus",
+           "https://www.allthelyrics.com/lyrics/adele",
+           "https://www.allthelyrics.com/lyrics/travis_scott",
+           "https://www.allthelyrics.com/lyrics/john_legend",
+           "https://www.allthelyrics.com/lyrics/shawn_mendes",
+           "https://www.allthelyrics.com/lyrics/one_direction",
+           "https://www.allthelyrics.com/lyrics/chris_brown")
+
+webpages <- list()
+name_htmls <- list()
+names <- list()
+
+for (i in 1:10){
+ webpages[[i]] <- read_html(urls[[i]])
+ name_htmls[[i]] <- html_nodes(webpages[[i]], '.artist-lyrics-list-all a')
+ names[[i]] <- html_text(name_htmls[[i]])
+ 
+ webpages <- c(webpages, webpages[[i]])
+ name_htmls <- c(name_htmls, name_htmls[[i]])
+ names <- c(names, names[[i]])
+
+}
+
+song_names <- names[1:10]
+song_names_unlist <- unlist(song_names, recursive = FALSE)
+
+
+```
+
+#Scraping song lyrics
+```{r}
+#function to scrape song lyrics
+getData <- function(url){
+  page1 <- read_html(url)
+  nodes1 <- html_nodes(page1, '#page p')
+  Data <- html_text(nodes1)
+  return(Data)
+}
+
+name_htmls_unlist <- unlist(name_htmls[1:10], recursive = FALSE)
+
+hrefs <- list()
+subpages <- list()
+lyrics <- list()
+
+for (i in 1:602){
+hrefs[[i]] <- html_attr(name_htmls_unlist[[i]], 'href')
+subpages[[i]] <- paste0('https://www.allthelyrics.com/', hrefs[[i]])
+lyrics[[i]] <- lapply(subpages[[i]], getData)
+
+hrefs <- c(hrefs, hrefs[[i]])
+subpages <- c(subpages, subpages[[i]])
+lyris <- c(lyrics, lyrics[[i]])
+
+}
+
+
+# length(lyrics)
+# length(name_htmls_unlist)
+#View(lyrics)
+
+lyrics_unlist <- unlist(lyrics, recursive = FALSE)
+#View(name_htmls_unlist)
+#View(lyrics_unlist)
+```
+
+```{r}
+popsong_lyrics <- data.frame(matrix(unlist(lyrics_unlist), byrow=T),stringsAsFactors=FALSE)
+popsong_lyrics <- popsong_lyrics %>% 
+  rename(popsong_lyrics = matrix.unlist.lyrics_unlist...byrow...T.)
+
+View(popsong_lyrics)
+
+popsong_lyrics$row_number <- rownames(popsong_lyrics)
+
+```
+
+```{r}
+#nrows pink = 1 to 811
+#nrows rihanna = 812 to 1714
+#nrows selena gomez = 1715 to 2408
+#nrows miley cyrus = 2409 to 2822
+#nrows adele = 2823 to 3111
+#nrows travis scott = 3112  
+#nrows john legend = 3113 to 3423
+#nrows shawn mendes = 3424 to 3458
+#nrows one direction = 3459 to 4284 
+#nrows chris brown = 4285 to 5140
+```
+
+#Preprocessing
+```{r}
+
+popsong_lyrics$singer[1:5140] <- "Pink"
+
+popsong_lyrics$singer[1:811] <- "Pink"
+popsong_lyrics$singer[812:1714] <- "Rihanna"
+popsong_lyrics$singer[1715:2408] <- "Selena Gomez"
+popsong_lyrics$singer[2409:2822] <- "Miley Cyrus"
+popsong_lyrics$singer[2823:3111] <- "Adele"
+popsong_lyrics$singer[3112] <- "Travis Scott"
+popsong_lyrics$singer[3113:3423] <- "John Legend"
+popsong_lyrics$singer[3424:3458] <- "Shawn Mendes"
+popsong_lyrics$singer[3459:4284] <- "One Direction"
+popsong_lyrics$singer[4285:5140] <- "Chris Brown"
+
+popsong_lyrics <- popsong_lyrics %>% select(-row_number)
+
+```
+
+#Tokenizing
+```{r}
+
+library(tokenizers)
+library(tidytext)
+```
+
+```{r}
+unreq_words <- tibble(word = c("chorus"))
+popsong_words <- popsong_lyrics %>%
+   group_by(singer) %>%
+  unnest_tokens(word, popsong_lyrics) %>%
+  anti_join(stop_words) %>%
+  anti_join(unreq_words)
+
+#View(popsong_words)
+```
+
+#Common words by each singer
+```{r}
+popsong_words %>%
+  count(singer, word, sort = TRUE)%>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(singer) %>%
+  top_n(5) %>%
+  ungroup() %>% 
+  ggplot(aes(reorder(word, n), n, fill = singer)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "n") +
+  facet_wrap(~singer, ncol = 4, scales = "free") +
+  #scale_fill_manual(values = c("purple","darkblue","darkred"))+
+  labs(x='word',y='count',title='5 most common words used by each singer')+
+  coord_flip()
+
+#Ironic that Chris brown used the word girl and love alot
+#Rihanna used biy and love alot
+```
+
+#Topic modeling
+```{r}
+
+library(tm)
+library(topicmodels)
+```
+
+```{r}
+popsong_lyrics$element_id <- 1:5140
+
+popsong_ele_words <- popsong_lyrics %>% group_by(singer) %>%
+  unnest_tokens(word, popsong_lyrics) %>%
+  anti_join(stop_words) %>%
+  anti_join(unreq_words)
+
+#View(popsong_ele_words)
+```
+
+#Cast to DTM with each verse as a document (element_id)
+```{r}
+popsong_lyrics_dtm <- popsong_ele_words %>%
+   count(element_id, word) %>%
+   cast_dtm(document = element_id, term = word, value = n)
+
+popsong_lyrics_dtm
+```
+
+#Cast to DTM with each singer as a document
+```{r}
+singer_dtm <- popsong_words %>%
+  count(singer, word) %>%
+  cast_dtm(document = singer, term = word, value = n)
+
+singer_dtm
+```
+
+#LDA on verses (element_id)
+```{r}
+
+element_id_lda <- LDA(popsong_lyrics_dtm, k = 10, control = list(seed = 12))
+element_id_lda #k=10 since there are 10 singers
+
+element_id_topics <- tidy(element_id_lda, matrix = "beta")
+element_id_topics
+
+element_id_topterms <- element_id_topics %>%
+  group_by(topic) %>%
+  top_n(5, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+element_id_topterms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+
+```
+
+
+#LDA wiht k=2 on verses (element_id)
+```{r}
+library(tidyr)
+element_id_lda_k2 <- LDA(popsong_lyrics_dtm, k = 2, control = list(seed = 23))
+element_id_lda_k2
+
+element_id_topics_k2 <- tidy(element_id_lda_k2, matrix = "beta")
+element_id_topics_k2
+
+beta_spread <- element_id_topics_k2 %>%
+  mutate(topic = paste0("topic", topic)) %>%
+  spread(topic, beta) %>%
+  filter(topic1 > .001 | topic2 > .001) %>%
+  mutate(log_ratio = log2(topic2 / topic1))
+
+beta_spread %>% arrange(desc(log_ratio))
+
+```
+
+#Visualizing difference in 2 topic or words most associated with only 1 topic
+```{r}
+beta_spread %>% arrange(desc(log_ratio)) %>%
+  filter(log_ratio >= 39 | log_ratio <= -42) %>%
+  #filter(term != "hail") %>%
+  ggplot(aes(reorder(term, -log_ratio), log_ratio)) + geom_col() + 
+  labs(x="word", y="log2 ratio of beta (topic2/topic1)",
+                                                   title = "Words with greatest difference in 2 topics")+
+  coord_flip()
+
+#looks like words from languages other english have been put in 1 topic
+#whereas other words have been associated with another topic
+
+```
+
+#LDA with each singer as a document
+```{r}
+#k=10 since there are 10 singer
+singer_lda <- LDA(singer_dtm, k = 10, control = list(seed = 1234))
+singer_lda
+
+singer_topics <- tidy(singer_lda, matrix = "beta")
+singer_topics
+
+
+#which topics are associated with each singer (a document)?
+singer_gamma <- tidy(singer_lda, matrix = "gamma")
+singer_gamma
+
+singer_gamma %>% 
+  mutate(document = reorder(document, gamma * topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot() +
+  facet_wrap(~ document)
+
+#rihanna is associated with topic 1 and 10. Looks like both John Legend and Miley Cyrus 
+#are associated with topic 3.
+```
+
+#singer classifications
+```{r}
+
+singer_classifications <- singer_gamma %>%
+  group_by(document) %>%
+  top_n(1, gamma) %>%
+  ungroup()
+
+singer_classifications
+
+```
+
+
+#assigning words in each document to a topic
+```{r}
+singer_assignments <- augment(singer_lda, data = singer_dtm)
+singer_assignments
+
+singer_assignments <- singer_assignments %>% inner_join(singer_classifications, by = c(".topic" = "topic"))
+singer_assignments
+
+#here document.x is the "true" band whereas document.y is the "consensus" band.
+
+```
+
+
+#confusion matrix for LDA where each singer is a document
+```{r}
+library(scales)
+
+singer_assignments %>%
+  count(document.x, document.y, wt = count) %>%
+  group_by(document.x) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(document.y, document.x, fill = percent)) +
+  geom_tile() +
+  scale_fill_gradient2(high = "red", label = percent_format()) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(x = "singer's words were assigned to",
+       y = "singer's words came from",
+       fill = "% of assignments")  
+
+
+#John Legend and Miley Cyrus are 2 singers whose lyrics are misclassified as each other's.
+
+```
+
+#LDA with each verse of a singer's song as a document (element_id)
+```{r}
+popverse_words <- popsong_ele_words %>%
+  unite(singer_verse, c(singer, element_id), sep = "_", remove = TRUE) %>%
+  count(singer_verse, word, sort = TRUE)
+
+popverse_dtm <- popverse_words %>%
+  cast_dtm(singer_verse, word, n)
+
+popverse_dtm
+
+popverse_lda <- LDA(popverse_dtm, k = 10, control = list(seed = 234))
+popverse_lda
+
+```
+
+#Top5 terms in each topic
+```{r}
+popverse_topics <- tidy(popverse_lda, matrix = "beta")
+popverse_topics
+
+top_terms_pop <- popverse_topics %>%
+  group_by(topic) %>%
+  top_n(5, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+top_terms_pop
+
+top_terms_pop %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+
+```
+
+#Which topics are associated with each verse?
+```{r}
+popverse_gamma <- tidy(popverse_lda, matrix = "gamma")
+popverse_gamma
+
+popverse_gamma <- popverse_gamma %>%
+  separate(document, c("singer", "verse"), sep = "_", convert = TRUE)
+
+popverse_gamma
+
+# reorder titles in order of topic 1, topic 2,...topic 10, etc before plotting
+popverse_gamma %>%
+  mutate(title = reorder(singer, gamma * topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot() +
+  facet_wrap(~ title)
+
+#we see that many verses of singers are associated with various topics. No singer is distinctively
+#associated to a single topic apart from Tavis Scott who has only one song in our analysis.
+```
+
+#Topic most associated with each verse
+```{r}
+popverse_classifications <- popverse_gamma %>%
+  group_by(singer, verse) %>%
+  top_n(1, gamma) %>%
+  ungroup()
+
+popverse_classifications
+```
+
+#Comparing consensus topic of each band i.e. the most common topic among his/her verses to
+#see which were misidentified the most
+```{r}
+singer_topics <- popverse_classifications %>%
+  count(singer, topic) %>%
+  group_by(singer) %>%
+  top_n(1, n) %>%
+  ungroup() %>%
+  transmute(consensus = singer, topic)
+
+popverse_classifications %>%
+  inner_join(singer_topics, by = "topic") %>%
+  filter(singer != consensus)
+
+```
+
+#Confusion matrix
+```{r}
+pop_assignments <- augment(popverse_lda, data = popverse_dtm)
+pop_assignments
+
+pop_assignments <- pop_assignments %>%
+  separate(document, c("singer", "verse"), sep = "_", convert = TRUE) %>%
+  inner_join(singer_topics, by = c(".topic" = "topic"))
+
+pop_assignments
+
+#here true singer is "singer" and consensus singer is "consensus"
+pop_assignments %>%
+  count(singer, consensus, wt = count) %>%
+  group_by(singer) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(consensus, singer, fill = percent)) +
+  geom_tile() +
+  scale_fill_gradient2(high = "red", label = percent_format()) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(x = "singer's words were assigned to",
+       y = "singer's words came from",
+       fill = "% of assignments")
+
+#Travis Scott is the least misclassified.
+#No other singers are distinctly classified.
+```
+
+#LDA with all lyrics combined 
+#Remove words with less tf_idf scores
+
+#Saving dataframes 
+```{r}
+#popsong_lyrics df
+write.csv(popsong_lyrics,
+        "D:/NEU/Individual Projects/Bands project/popsong_lyrics.csv",
+          row.names = FALSE)
+
+#popsong_words df
+write.csv(popsong_words,
+        "D:/NEU/Individual Projects/Bands project/popsong_words.csv",
+          row.names = FALSE)
+
+#popsong_ele_words df
+write.csv(popsong_ele_words,
+        "D:/NEU/Individual Projects/Bands project/popsong_ele_words.csv",
+          row.names = FALSE)
+
+
+
+
+```

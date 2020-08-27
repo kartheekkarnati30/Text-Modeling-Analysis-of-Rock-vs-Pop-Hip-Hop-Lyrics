@@ -1,0 +1,442 @@
+---
+title: "Rock vs Hip-Hop & Pop"
+author: "Naga Santhosh Kartheek Karnati"
+date: "8/23/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+#Loading libraries
+```{r}
+library(ggplot2)
+library(dplyr)
+library(rvest)
+library(xml2)
+library(selectr)
+library(stringr)
+library(jsonlite)
+library(naniar)
+library(tokenizers)
+library(tidytext)
+library(dbplyr)
+library(tidyr)
+library(tibble)
+library(data.table)
+```
+
+
+#Loading dataframes
+```{r}
+pewords <- fread("D:/NEU/Individual Projects/Bands project/Data/popsong_ele_words.csv")
+rewords <- fread("D:/NEU/Individual Projects/Bands project/Data/song_lyrics_ele_words.csv")
+pwords <- fread("D:/NEU/Individual Projects/Bands project/Data/popsong_words.csv")
+rwords <- fread("D:/NEU/Individual Projects/Bands project/Data/song_lyrics_words.csv")
+
+# View(pewords)
+# View(rewords)
+# View(pwords)
+# View(rwords)
+
+```
+
+#Merging dataframes
+```{r}
+ewords <- rbind(rewords, pewords, use.names = FALSE)
+words <- rbind(rwords, pwords, use.names = FALSE)
+
+# View(ewords)
+# View(words)
+
+```
+
+#Save dataframes
+```{r}
+#ewords df
+write.csv(ewords,
+        "D:/NEU/Individual Projects/Bands project/Data/ewords.csv",
+          row.names = FALSE)
+
+#words df
+write.csv(words,
+        "D:/NEU/Individual Projects/Bands project/Data/words.csv",
+          row.names = FALSE)
+
+
+```
+
+
+#Comparing vocabulary
+```{r}
+n_words <- words %>% count(band, word, sort = TRUE)
+n_words
+
+total_words <- n_words %>% group_by(band) %>% summarise(words = sum(n))
+total_words
+
+unique_words <- n_words %>% select(-n) %>% count(band, sort = TRUE)
+
+vocabulary <- total_words %>% inner_join(unique_words) %>% mutate(ratio=n/words) %>% arrange(desc(ratio))
+vocabulary
+
+#Ignore Travis Scott and Shawn mendes since we have less data .
+#John legend most
+#Rihanna least
+
+#Comparing rock bands vs hip-hop and pop singers
+bands <- c("Pink Floyd", "Eagles","Led Zeppelin", "Guns n Roses", "The Who", "Metallica", "Aerosmith",
+           "AC/DC", "Queen", "The Rolling Stones")
+
+singers <- c("Travis Scott","Shawn Mendes","John Legend","Miley Cyrus","Adele","Pink","One Direction",
+             "Chris Brown","Selena Gomez","Rihanna")
+
+vocabulary %>% filter(band %in% bands) %>% summarise(no_rockwords = sum(words),
+               unique_rockwords = sum(n)) %>% mutate(ratio=unique_rockwords/no_rockwords)
+
+vocabulary %>% filter(band %in% singers) %>% summarise(no_hhpwords = sum(words),
+               unique_hhpwords = sum(n)) %>% mutate(ratio=unique_hhpwords/no_hhpwords)
+
+#rock bands have better vocabulary than hip-hop and pop artists.
+
+vocabulary %>% filter(!band %in% c("Travis Scott","Shawn Mendes")) %>%
+  ggplot(aes(reorder(band, ratio), ratio, fill = band)) + geom_col(show.legend = FALSE) + 
+  labs(x = "band/singer", y="ratio of unique words used to total words used", 
+       title = "Comparison of vocabulary") + coord_flip()
+
+```
+
+
+#Topic modeling after eliminating words with low tf_idf scores
+```{r}
+library(tokenizers)
+library(tidytext)
+library(tidyr)
+library(tm)
+library(topicmodels)
+
+```
+
+#Term frequencies 
+```{r}
+##Calculating the term frequency per each band/singer:
+tfs <- n_words %>%
+  left_join(total_words)%>%
+  mutate(tf = n/words) %>% 
+  arrange(desc(tf))
+
+tfs
+
+```
+
+#tf_idfs
+```{r}
+unreq_words <- tibble(word = c("chorus","chris", "53rd", "miley", "pink", "rihanna"))
+
+#tf_idfs
+tf_idfs <- words %>%
+  anti_join(unreq_words) %>%
+  count(band, word, sort=TRUE) %>%
+  bind_tf_idf(word, band, n) %>% 
+  arrange(desc(tf_idf))
+
+My_Theme = theme(
+  axis.title.x = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10))
+
+tf_idfs %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup() %>%
+  ggplot(aes(reorder(word,tf_idf), tf_idf), fill = band) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~band, ncol = 5,  scales = "free") +
+  labs(x="word", y="tf_idf", title = "words unique to bands/singers")+
+  coord_flip() + My_Theme
+
+tf_idfs_top_5 <- tf_idfs %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup()
+
+summary(tf_idfs$tf_idf)
+#remove the bottom 25% of words from the tf_idf df
+
+```
+
+#Remove words in the bottom 25% of tf_idf scores
+```{r}
+
+tf_idfs_filtered <- tf_idfs %>% filter(tf_idf > 0.0001154) #%>% select(-n,-tf,-idf,-tf_idf)
+#dim(tf_idfs)
+
+#join words df and tf_idfs_filtered df on composite key (band and word)
+words <- words %>% inner_join(tf_idfs_filtered, by = c("band"="band", "word"="word"))
+
+words$genre[words$band %in% bands] <- "Rock"
+words$genre[words$band %in% singers] <- "Hip-Hop & Pop"
+```
+
+#Words unique to rock bands and hip-hop and pop artists
+```{r}
+words %>% unique() %>% group_by(genre) %>% top_n(5, tf_idf) %>% ungroup()
+
+```
+
+#Topic modeling with each band/singer as a document
+```{r}
+words2 <- words %>% select(band, word)
+
+```
+
+#DTM with each band/singer as a document
+```{r}
+bandsinger_dtm <- words2 %>%
+  count(band, word) %>%
+  cast_dtm(document = band, term = word, value = n)
+
+bandsinger_dtm
+```
+
+```{r}
+lda1 <- LDA(bandsinger_dtm, k = 20, control = list(seed = 5))
+lda1
+
+topics1 <- tidy(lda1, matrix = "beta")
+topics1
+
+topterms1 <- topics1 %>%
+  group_by(topic) %>%
+  top_n(5, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+topterms1 %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+
+```
+
+```{r}
+#which topics are associated with each singer (a document)?
+gamma1 <- tidy(lda1, matrix = "gamma")
+gamma1
+
+gamma1 %>% 
+  mutate(document = reorder(document, gamma * topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot() +
+  facet_wrap(~ document, ncol = 4)
+
+#The rolling stones associated with topics 2 and 5
+#Metallica associated with topcis 1 and 13
+#Adele associated with topcis 7 and 3
+#Travis scott associated with topics 10 and 6
+#Pink associated with topics 11 and 3
+#Shawn mendes associated with topics 13, 12, 19, 12, 7 and 9
+```
+
+#band/singer classifications
+```{r}
+
+bandsinger_classifications <- gamma1 %>%
+  group_by(document) %>%
+  top_n(1, gamma) %>%
+  ungroup()
+
+bandsinger_classifications
+
+```
+
+
+#assigning words in each document to a topic
+```{r}
+bandsinger_assignments <- augment(lda1, data = bandsinger_dtm)
+bandsinger_assignments
+
+bandsinger_assignments <- bandsinger_assignments %>% 
+  inner_join(bandsinger_classifications, by = c(".topic" = "topic"))
+bandsinger_assignments
+
+#here document.x is the "true" band whereas document.y is the "consensus" band.
+
+```
+
+#confusion matrix for LDA where each band/singer is a document
+```{r}
+library(scales)
+
+bandsinger_assignments %>%
+  count(document.x, document.y, wt = count) %>%
+  group_by(document.x) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(document.y, document.x, fill = percent)) +
+  geom_tile() +
+  scale_fill_gradient2(high = "red", label = percent_format()) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(x = "band's/singer's words were assigned to",
+       y = "band's/singer's words came from",
+       fill = "% of assignments")  
+
+
+#The few songs that shawn mendes has can be mistaken as Adele, John Legend, One direction songs
+#Travis scott's song can be mistaken as an Eagles song.
+#Selena Gomez's songs can be mistaken as Miley cyrus songs and vice versa
+
+```
+
+#topic modeling with a different approach
+```{r}
+female_artists <- c("Adele", "Pink", "Selena Gomez", "Miley Cyrus", "Rihanna")
+male_artists <- c("John Legend", "Travis Scott", "Shawn Mendes", "One Direction", "Chris Brown")
+
+words$genre[words$band %in% male_artists] <- "Hip-Hop/Pop Male"
+words$genre[words$band %in% female_artists] <- "Hip-Hop/Pop Female"
+
+words3 <- words %>% select(genre, word)
+
+```
+
+#DTM with each genre as a document
+```{r}
+genre_dtm <- words3 %>%
+  count(genre, word) %>%
+  cast_dtm(document = genre, term = word, value = n)
+
+genre_dtm
+```
+
+```{r}
+lda2 <- LDA(genre_dtm, k = 3, control = list(seed = 10))
+lda2
+
+topics2 <- tidy(lda2, matrix = "beta")
+topics2
+
+topterms2 <- topics2 %>%
+  group_by(topic) %>%
+  top_n(5, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+topterms2 %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+```
+
+
+```{r}
+#which topics are associated with each genre (a document)?
+gamma2 <- tidy(lda2, matrix = "gamma")
+gamma2
+
+gamma2 %>% 
+  mutate(document = reorder(document, gamma * topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot() +
+  facet_wrap(~ document, ncol = 4)
+
+#rock bands are associated with topics 2 and 1
+#hip-hop and pop artists (male and female) are associated with topic 3.
+```
+
+
+#genre classifications
+```{r}
+
+genre_classifications <- gamma2 %>%
+  group_by(document) %>%
+  top_n(1, gamma) %>%
+  ungroup()
+
+genre_classifications
+
+```
+
+
+#assigning words in each document to a topic
+```{r}
+genre_assignments <- augment(lda2, data = genre_dtm)
+genre_assignments
+
+genre_assignments <- genre_assignments %>% 
+  inner_join(genre_classifications, by = c(".topic" = "topic"))
+genre_assignments
+
+#here document.x is the "true" band whereas document.y is the "consensus" band.
+
+```
+
+
+
+#confusion matrix for LDA where each genre is a document
+```{r}
+library(scales)
+
+genre_assignments %>%
+  count(document.x, document.y, wt = count) %>%
+  group_by(document.x) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(document.y, document.x, fill = percent)) +
+  geom_tile() +
+  scale_fill_gradient2(high = "red", label = percent_format()) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(x = "band's/singer's words were assigned to",
+       y = "band's/singer's words came from",
+       fill = "% of assignments") 
+
+#male and female artist's lyrics are mistaken as each other's.
+#Rock lyrics aren't mistaken for another genre.
+```
+
+
+#Wordclouds
+```{r}
+library(wordcloud)
+library(wordcloud2)
+library(RColorBrewer)
+
+```
+
+
+```{r}
+wordcloud_df <- words %>% unique() %>% select(word, n)
+
+
+set.seed(1234)
+
+wordcloud(words = wordcloud_df$word, freq = wordcloud_df$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, rot.per = 0.35, colors = brewer.pal(8, "Dark2"))
+```
+
+```{r}
+wordcloud2(data=wordcloud_df, size=1.6, color='random-dark')
+
+```

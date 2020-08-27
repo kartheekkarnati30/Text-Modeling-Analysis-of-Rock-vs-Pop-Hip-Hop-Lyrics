@@ -1,0 +1,917 @@
+---
+title: "Bands Project"
+author: "Naga Santhosh Kartheek Karnati"
+date: "6/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(rvest)
+library(xml2)
+library(selectr)
+library(stringr)
+library(jsonlite)
+library(naniar)
+library(tokenizers)
+library(tidytext)
+library(dbplyr)
+library(tidyr)
+```
+## scraping song names: PINK FLOYD
+```{r}
+url <- "https://www.allthelyrics.com/lyrics/pink_floyd"
+
+webpage <- read_html(url)
+
+name_html <- html_nodes(webpage, '.artist-lyrics-list-all a')
+
+name <- html_text(name_html)
+
+head(name)
+
+name <- as.list(name)
+
+name <- data.frame(matrix(unlist(name), nrow=length(name), byrow=T),stringsAsFactors=FALSE)
+name <- name %>% rename(song = matrix.unlist.name...nrow...length.name...byrow...T.)
+
+#View(name)
+```
+
+## scraping song lyrics
+```{r}
+#function to scrape song lyrics
+getData <- function(url){
+  page1 <- read_html(url)
+  nodes1 <- html_nodes(page1, '#page p')
+  Data <- html_text(nodes1)
+  return(Data)
+}
+
+
+#code to scrape lyrics
+sub_urls <- html_attr(name_html, 'href')
+subpage <- paste0('https://www.allthelyrics.com/', sub_urls)
+text <- lapply(subpage, getData)
+
+#View(text)
+length(text)
+nrow(name)
+name[1,]
+```
+
+
+
+##bands' song names
+```{r}
+urls <- c("https://www.allthelyrics.com/lyrics/pink_floyd",
+          "https://www.allthelyrics.com/lyrics/led_zeppelin",
+          "https://www.allthelyrics.com/lyrics/rolling_stones",
+          "https://www.allthelyrics.com/lyrics/the_who",
+          "https://www.allthelyrics.com/lyrics/eagles",
+          "https://www.allthelyrics.com/lyrics/guns_n_roses",
+          "https://www.allthelyrics.com/lyrics/acdc",
+          "https://www.allthelyrics.com/lyrics/queen",
+          "https://www.allthelyrics.com/lyrics/aerosmith",
+          "https://www.allthelyrics.com/lyrics/metallica",
+          ""
+          )
+
+webpages <- list()
+name_htmls <- list()
+names <- list()
+
+for (i in 1:10){
+ webpages[[i]] <- read_html(urls[[i]])
+ name_htmls[[i]] <- html_nodes(webpages[[i]], '.artist-lyrics-list-all a')
+ names[[i]] <- html_text(name_htmls[[i]])
+ 
+ webpages <- c(webpages, webpages[[i]])
+ name_htmls <- c(name_htmls, name_htmls[[i]])
+ names <- c(names, names[[i]])
+
+}
+
+song_names <- names[1:10]
+song_names_unlist <- unlist(song_names, recursive = FALSE)
+length(song_names_unlist)
+
+```
+
+##bands' song lyrics
+```{r}
+name_htmls_unlist <- unlist(name_htmls[1:10], recursive = FALSE)
+
+hrefs <- list()
+subpages <- list()
+lyrics <- list()
+
+for (i in 1:1703){
+hrefs[[i]] <- html_attr(name_htmls_unlist[[i]], 'href')
+subpages[[i]] <- paste0('https://www.allthelyrics.com/', hrefs[[i]])
+lyrics[[i]] <- lapply(subpages[[i]], getData)
+
+hrefs <- c(hrefs, hrefs[[i]])
+subpages <- c(subpages, subpages[[i]])
+lyris <- c(lyrics, lyrics[[i]])
+
+}
+
+
+length(lyrics)
+#View(lyrics)
+
+lyrics_unlist <- unlist(lyrics, recursive = FALSE)
+#View(lyrics_unlist)
+
+
+```
+
+```{r}
+song_lyrics <- data.frame(matrix(unlist(lyrics_unlist), byrow=T),stringsAsFactors=FALSE)
+song_lyrics <- song_lyrics %>% 
+  rename(song_lyrics = matrix.unlist.lyrics_unlist...byrow...T.)
+
+#View(song_lyrics)
+lengths_lyrics_unlist <- lengths(lyrics_unlist)
+#class(lengths_lyrics_unlist)
+length(lengths_lyrics_unlist)
+```
+
+```{r}
+#are no. of rows in song_lyrics playlist the same as the sum of 
+sum <- 0
+for (i in 1:length(lengths_lyrics_unlist)){
+  sum <- sum + lengths_lyrics_unlist[[i]]
+}
+sum
+
+#nrows pink floyd = 1:377
+#nrows led zeppelin = 378:918
+#nrows rolling stones = 919:3125
+#nrows the who = 3126:4344
+#nrows eagles = 4345:4711
+#nrows guns n roses = 4712:5346
+#nrows acdc = 5347:6436
+#nrows queen = 6347:7492
+#nrows aerosmith = 7493:8999
+#nrows metallica = 9000:10256
+
+song_lyrics$band[1:10256] <- "Pink Floyd"
+song_lyrics$band[378:918] <- "Led Zeppelin"
+song_lyrics$band[919:3125] <- "The Rolling Stones"
+song_lyrics$band[3126:4344] <- "The Who"
+song_lyrics$band[4345:4711] <- "Eagles"
+song_lyrics$band[4712:5346] <- "Guns n Roses"
+song_lyrics$band[5347:6436] <- "AC/DC"
+song_lyrics$band[6347:7492] <- "Queen"
+song_lyrics$band[7493:8999] <- "Aerosmith"
+song_lyrics$band[9000:10256] <- "Metallica"
+
+#song_lyrics$band %>% unique()
+View(song_lyrics)#######################3
+```
+
+##Save song lyrics data frame to a csv
+```{r}
+# write.csv(song_lyrics,
+#         "D:/NEU/Individual Projects/Bands project/song_lyrics.csv",
+#           row.names = FALSE)
+
+```
+
+```{r}
+library(dbplyr)
+library(tokenizers)
+library(tidytext)
+
+# data("AssociatedPress")
+# View(AssociatedPress)
+# AssociatedPress
+
+
+
+```
+
+```{r}
+# tidy_articles <- articles%>%
+#   group_by(news_site, political_lean)%>%
+#   unnest_tokens(word, article_text)%>%
+#   anti_join(stop_words)%>%
+#   anti_join(unreq_words)%>%
+#   select(year:date, political_lean:word)
+
+unreq_words <- tibble(word = c("plant", "page", "bonham", "jagger","richards",
+                               "x3","x2","x1","li","chorus"))
+song_lyrics_words <- song_lyrics %>%
+  group_by(band) %>%
+  unnest_tokens(word, song_lyrics) %>%
+  anti_join(stop_words)%>%
+  anti_join(unreq_words)
+
+# write.csv(song_lyrics_words,
+#         "D:/NEU/Individual Projects/Bands project/song_lyrics_words.csv",
+#           row.names = FALSE)
+
+
+```
+
+
+#Gather lyrics for each band as a single document
+```{r}
+View(song_lyrics_words)############### checkpoint 2
+
+
+```
+
+##most common words
+```{r}
+#most common words
+song_lyrics_words %>%
+  count(band, word, sort = TRUE)%>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup() %>%
+  ggplot(aes(reorder(word, n), n, fill = band)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "n") +
+  facet_wrap(~band, ncol = 4, scales = "free") +
+  #scale_fill_manual(values = c("purple","darkblue","darkred"))+
+  labs(x='word',y='count',title='Top 5 most appearing words in each bands songs')+
+  coord_flip()
+
+```
+
+##most common words used by each band
+```{r}
+
+top10_words <- function(ban){
+song_lyrics_words %>%
+  filter(band == ban) %>%
+  count(word, sort = TRUE)%>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  top_n(10) %>%
+  ggplot(aes(reorder(word, n), n)) +
+  geom_col() +
+  labs(x = NULL, y = "n") +
+  labs(x='word',y='count',title='Top 10 most appearing words in each bands songs')+
+  coord_flip()
+
+}
+
+top10_words("Pink Floyd")
+
+
+```
+
+##tf_idf scores
+```{r}
+##Calculating the term frequency per each band:
+most_common_words <- song_lyrics_words%>%
+  count(band, word, sort = TRUE)
+
+total_words_by_each_band <- most_common_words%>%
+  group_by(band)%>%
+  summarise(total = sum(n))
+
+tfs <- most_common_words %>%
+  left_join(total_words_by_each_band)%>%
+  mutate(tf = n/total)
+
+tfs_desc <- tfs%>%arrange(desc(tf))
+
+#tf_idfs
+tf_idfs <- song_lyrics_words %>%
+  count(band, word, sort=TRUE) %>%
+  bind_tf_idf(word, band, n)
+
+tf_idfs_desc <- tf_idfs %>% arrange(desc(tf_idf))
+
+tf_idfs %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup() %>%
+  ggplot(aes(reorder(word,tf_idf), tf_idf), fill = band) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~band, ncol = 3, scales = "free") +
+  labs(x="word", y="tf_idf", title = "words unique to bands")+
+  coord_flip()
+
+tf_idfs_top_5 <- tf_idfs %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup()
+
+# write.csv(tf_idfs_top_5,
+#           "D:/NEU/Individual Projects/Bands project/tf_idfs_top_5.csv",
+#            row.names = FALSE)
+
+```
+
+## biggest vocabulary
+```{r}
+
+# for (i in seq_along(unique(song_lyrics_words$band))){
+# vocabulary <- unique((song_lyrics_words %>% filter(band == ))$word) %>% length()
+# 
+# }
+# vocabulary
+
+
+#number of distinct words used by each band
+bands_list <- unique(song_lyrics_words$band)
+vocabulary <- list()
+for (i in seq_along(bands_list)){
+  vocabulary[i] <- unique((song_lyrics_words %>% 
+  filter(band == bands_list[i] ))$word) %>% length()
+  
+  print(paste(bands_list[i]))
+  print(vocabulary[[i]])
+}
+#class(vocabulary)
+bl <- as.list(bands_list) %>% unlist() %>% matrix(byrow = T) %>% data.frame(stringsAsFactors=FALSE)
+#bl
+vocabulary <- vocabulary %>% unlist() %>% matrix(byrow = T) %>% data.frame(stringsAsFactors=FALSE)
+#vocabulary
+
+vocabulary_df <- cbind(bl, vocabulary)
+#vocabulary_df
+
+names(vocabulary_df) <- c("band", "distinct_words")
+
+vocabulary_df <- vocabulary_df %>% 
+  left_join(total_words_by_each_band) %>%
+  mutate(ratio = distinct_words/total) %>%
+  arrange(desc(ratio))
+vocabulary_df
+
+#Pink Floyd had the best vocabulary, I mean its obvious!! Roger Waters is ingenious.
+
+#It kinda makes sense that Queen and AC/DC are down the pecking order since they wrote a 
+#lot of anthems which had repetitive choruses. 
+
+```
+
+##bigrams
+```{r}
+#View(song_lyrics)
+
+song_lyrics_bigrams <- song_lyrics%>%
+  group_by(band)%>%
+  unnest_tokens(bigram, song_lyrics, token = "ngrams", n=2)
+#View(song_lyrics_bigrams)  
+
+
+#remove stop words from bigrams
+#song_lyrics_bigrams %>% count(bigram, sort = T)
+song_lyrics_bigrams <- song_lyrics_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+song_lyrics_bigrams <- song_lyrics_bigrams %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>%
+  anti_join(unreq_words, by = c('word1'='word')) %>%
+  anti_join(unreq_words, by = c('word2'='word')) %>%
+  unite(bigram, word1, word2, sep = " ")
+
+#song_lyrics_bigrams %>% count(bigram, sort = T)
+```
+
+##most common bigrams used by each band
+```{r}
+song_lyrics_bigrams %>%
+  count(band, bigram, sort = TRUE) %>%
+  mutate(bigram = factor(bigram, levels = rev(unique(bigram))))%>% 
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup() %>%
+  arrange(band, -n) %>%
+  ggplot(aes(reorder(bigram,-n), n, fill=band)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "bigrams", y = "counts",title = "5 most common bigrams used by each band") +
+  facet_wrap(~band, ncol = 4, scales = "free") +
+  coord_flip()
+
+```
+
+##trigrams
+```{r}
+song_lyrics_trigrams <- song_lyrics%>%
+  group_by(band)%>%
+  unnest_tokens(trigram, song_lyrics, token = "ngrams", n=3)
+#View(song_lyrics_bigrams)  
+
+
+#remove stop words from bigrams
+#song_lyrics_bigrams %>% count(bigram, sort = T)
+song_lyrics_trigrams <- song_lyrics_trigrams %>%
+  separate(trigram, c("word1", "word2", "word3"), sep = " ")
+
+song_lyrics_trigrams <- song_lyrics_trigrams %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>%
+  filter(!word3 %in% stop_words$word) %>%
+  anti_join(unreq_words, by = c('word1'='word')) %>%
+  anti_join(unreq_words, by = c('word2'='word')) %>%
+  anti_join(unreq_words, by = c('word3'='word')) %>%
+  unite(trigram, word1, word2, word3, sep = " ")
+#View(song_lyrics_trigrams)
+```
+
+##most common trigrams used by each band
+```{r}
+song_lyrics_trigrams %>%
+  count(band, trigram, sort = TRUE) %>%
+  mutate(trigram = factor(trigram, levels = rev(unique(trigram))))%>% 
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup() %>%
+  ggplot(aes(reorder(trigram,n), n, fill=band)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "trigrams", y = "counts",title = "5 most common trigrams used by each band") +
+  facet_wrap(~band, ncol = 3, scales = "free") +
+  coord_flip()
+
+```
+
+
+##save dataframes as csv
+```{r}
+
+# write.csv(song_lyrics_words,
+#         "D:/NEU/Individual Projects/Bands project/song_lyrics_words.csv",
+#          row.names = FALSE)
+# 
+# write.csv(song_lyrics_bigrams,
+#         "D:/NEU/Individual Projects/Bands project/song_lyrics_bigramss.csv",
+#          row.names = FALSE)
+# 
+# write.csv(song_lyrics_trigrams,
+#         "D:/NEU/Individual Projects/Bands project/song_lyrics_trigrams.csv",
+#          row.names = FALSE)
+
+wordds <- song_lyrics_words %>%
+  count(band, word, sort = TRUE)%>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup()
+
+bigramms <- song_lyrics_bigrams %>%
+  count(band, bigram, sort = TRUE) %>%
+  mutate(bigram = factor(bigram, levels = rev(unique(bigram))))%>% 
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup()
+
+trigramms <- song_lyrics_trigrams %>%
+  count(band, trigram, sort = TRUE) %>%
+  mutate(trigram = factor(trigram, levels = rev(unique(trigram))))%>% 
+  group_by(band) %>%
+  top_n(5) %>%
+  ungroup()
+
+ # write.csv(wordds,
+ #          "D:/NEU/Individual Projects/Bands project/words.csv",
+ #           row.names = FALSE)
+ # 
+ # write.csv(bigramms,
+ #          "D:/NEU/Individual Projects/Bands project/bigrams.csv",
+ #           row.names = FALSE)
+ # 
+ # write.csv(trigramms,
+ #          "D:/NEU/Individual Projects/Bands project/trigrams.csv",
+ #           row.names = FALSE)
+
+```
+
+##sentiment analysis
+```{r}
+# sentiment_list <- c("joy","surprise","anticipation","disgust","sadness","trust","anger",
+#                     "negative","positive","fear")
+
+
+sentiments <- function(ssentiment){
+nrc <- get_sentiments("nrc") %>%
+  filter(sentiment == ssentiment)
+
+song_lyrics_words %>%
+inner_join(nrc, by="word") %>%
+count(band, word, sort=TRUE) %>%
+mutate(word = reorder(word, n)) %>%
+group_by(band) %>%
+top_n(5) %>%
+ggplot(aes(x=word, y=n, fill = band)) +
+geom_col(show.legend=FALSE) +
+facet_wrap(~band, scales = "free") +
+coord_flip()
+}
+
+sentiments("joy")
+sentiments("anger")
+sentiments("positive")
+sentiments("negative")
+sentiments("fear")
+sentiments("trust")
+sentiments("sadness")
+sentiments("disgust")
+sentiments("anticipation")
+sentiments("surprise")
+```
+
+##sentiment scores
+```{r}
+
+library(sentimentr)
+#View(song_lyrics)
+afinn <- get_sentiments("afinn")
+
+# sentiment scores before normalization
+senti_before_norm <- song_lyrics_words %>%
+  inner_join(afinn, by = "word") %>%
+  group_by(band) %>%
+  summarise(total_sentiment = sum(value)) %>%
+  arrange(desc(total_sentiment))
+senti_before_norm
+
+#sentiment scores after normalization
+song_lyrics_words %>%
+  inner_join(afinn, by = "word") %>%
+  count(band, sort = TRUE) %>%
+  inner_join(senti_before_norm, by = "band") %>%
+  mutate(senti_after_norm = total_sentiment/n) %>%
+  arrange(desc(senti_after_norm)) %>% #here 'n' is the number of words used by each band
+  ggplot(aes(reorder(band, -senti_after_norm), senti_after_norm)) + 
+  geom_col() + labs(x ="band",
+                                                                       y="normalized sentiment score",
+                                                                       title="Sentiment scores of bands")+
+  coord_flip()
+  
+sentiment_scores <- sentiment(song_lyrics$song_lyrics)
+#View(sentiment_scores)
+#unique(sentiment_scores$element_id) %>% length()
+
+sentiment_scores <- sentiment_scores %>% group_by(element_id) %>% 
+  summarise(sentiment_total = sum(sentiment))
+
+song_lyrics <- song_lyrics %>% mutate(element_id = row_number())
+
+song_lyrics %>% 
+  inner_join(sentiment_scores, by = "element_id") %>%
+  group_by(band) %>%
+  summarise(sentiment_total = sum(sentiment_total)) %>%
+  arrange(desc(sentiment_total)) 
+
+#Queen, Led Zeppelin and The Rolling Stones are in the top 3 for both approaches
+#and Guns n Roses, AC/DC and Metallica are in the bottom 3 for both approaches.
+```
+
+
+##Topic Modeling DTM casting with element_id as a document
+```{r}
+library(tm)
+library(topicmodels)
+
+#cast to dtm (with element_id as a document)
+song_lyrics_ele_words <- song_lyrics %>%
+  group_by(band, element_id) %>%
+  unnest_tokens(word, song_lyrics) %>%
+  anti_join(stop_words)%>%
+  anti_join(unreq_words)
+
+
+#View(song_lyrics_ele_words)
+# write.csv(song_lyrics_ele_words,
+#         "D:/NEU/Individual Projects/Bands project/song_lyrics_ele_words.csv",
+#         row.names = FALSE)
+
+
+song_lyrics_dtm <- song_lyrics_ele_words %>%
+   count(element_id, word) %>%
+   cast_dtm(document = element_id, term = word, value = n)
+
+song_lyrics_dtm_99 <- removeSparseTerms(song_lyrics_dtm, sparse = .99)
+
+#song_lyrics_ele_words$element_id %>% unique() %>% tail()
+song_lyrics_documents <- song_lyrics %>% semi_join(song_lyrics_ele_words, by = "element_id")
+```
+
+#DTM casting with each band as a document
+```{r}
+band_dtm <- song_lyrics_words %>%
+  count(band, word) %>%
+  cast_dtm(document = band, term = word, value = n)
+
+#2 dtms 
+song_lyrics_dtm
+band_dtm
+
+```
+
+#LDA on song_lyrics_dtm
+```{r}
+#4 topic LDA model
+element_id_lda <- LDA(song_lyrics_dtm, k = 10, control = list(seed = 1234))
+element_id_lda
+
+element_id_topics <- tidy(element_id_lda, matrix = "beta")
+element_id_topics
+
+element_id_topterms <- element_id_topics %>%
+  group_by(topic) %>%
+  top_n(5, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+element_id_topterms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+
+#results dont say much
+```
+
+```{r}
+library(tidyr)
+element_id_lda <- LDA(song_lyrics_dtm, k = 2, control = list(seed = 1234))
+element_id_lda
+
+element_id_topics <- tidy(element_id_lda, matrix = "beta")
+element_id_topics
+
+beta_spread <- element_id_topics %>%
+  mutate(topic = paste0("topic", topic)) %>%
+  spread(topic, beta) %>%
+  filter(topic1 > .001 | topic2 > .001) %>%
+  mutate(log_ratio = log2(topic2 / topic1))
+
+beta_spread %>% arrange(desc(log_ratio))
+
+##results are inconclusive with element_id as a document
+
+
+```
+
+
+#LDA with each band as a document
+```{r}
+#k=10 since there are 10 bands
+band_lda <- LDA(band_dtm, k = 10, control = list(seed = 1234))
+band_lda
+
+band_topics <- tidy(band_lda, matrix = "beta")
+band_topics
+
+band_topterms <- band_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+band_topterms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+
+
+band_lda <- LDA(band_dtm, k = 2, control = list(seed = 1234))
+band_lda
+
+band_topics <- tidy(band_lda, matrix = "beta")
+band_topics
+
+beta_spread <- band_topics %>%
+  mutate(topic = paste0("topic", topic)) %>%
+  spread(topic, beta) %>%
+  filter(topic1 > .001 | topic2 > .001) %>%
+  mutate(log_ratio = log2(topic2 / topic1))
+
+beta_spread %>% arrange(desc(log_ratio)) %>%
+  filter(log_ratio >= 1.817 | log_ratio <= -2) %>%
+  filter(term != "hail") %>%
+  ggplot(aes(reorder(term, -log_ratio), log_ratio)) + geom_col() + 
+  labs(x="word", y="log2 ratio of beta (topic2/topic1)",
+                                                   title = "Words with greatest difference in 2 topics")+
+  coord_flip()
+
+
+#we notice a difference in the words used in 2 topics.
+#One of the topic has words like shoot, master, kill, kick, business and the other has words like
+#magic, lovin, girl.
+#somewhat better results with each band as a document.
+```
+
+```{r}
+#k=10 since there are 10 bands
+band_lda <- LDA(band_dtm, k = 10, control = list(seed = 1234))
+band_lda
+
+band_topics <- tidy(band_lda, matrix = "beta")
+band_topics
+
+
+#which topics are associated with each band (a document)?
+band_gamma <- tidy(band_lda, matrix = "gamma")
+band_gamma
+
+band_gamma %>% 
+  mutate(document = reorder(document, gamma * topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot() +
+  facet_wrap(~ document)
+
+#looks like lyrics of Aerosmith and AC/DC were somewhat associated with other topics.
+#both of them are minorly associated with topic 7.
+```
+
+```{r}
+
+band_classifications <- band_gamma %>%
+  group_by(document) %>%
+  top_n(1, gamma) %>%
+  ungroup()
+
+band_classifications
+
+#Guns n Roses and The Who get classified as topic 9.
+```
+
+#assigning words in each document to a topic
+```{r}
+assignments <- augment(band_lda, data = band_dtm)
+assignments
+
+assignments <- assignments %>% inner_join(band_classifications, by = c(".topic" = "topic"))
+assignments
+
+#here document.x is the "true" band whereas document.y is the "consensus" band.
+
+```
+
+#confusion matrix for LDA where each band is a document
+```{r}
+library(scales)
+
+assignments %>%
+  count(document.x, document.y, wt = count) %>%
+  group_by(document.x) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(document.y, document.x, fill = percent)) +
+  geom_tile() +
+  scale_fill_gradient2(high = "red", label = percent_format()) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(x = "band's words were assigned to",
+       y = "band's words came from",
+       fill = "% of assignments")  
+
+
+```
+
+
+##LDA with each verse of a band's verse as a document
+```{r}
+verse_words <- song_lyrics_ele_words %>%
+  unite(band_verse, c(band, element_id), sep = "_", remove = TRUE) %>%
+  count(band_verse, word, sort = TRUE)
+
+verse_dtm <- verse_words %>%
+  cast_dtm(band_verse, word, n)
+
+verse_dtm
+
+verse_lda <- LDA(verse_dtm, k = 10, control = list(seed = 234))
+verse_lda
+
+```
+
+#top5 terms in each topic
+```{r}
+verse_topics <- tidy(verse_lda, matrix = "beta")
+verse_topics
+
+top_terms <- verse_topics %>%
+  group_by(topic) %>%
+  top_n(5, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+top_terms
+
+top_terms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  scale_x_reordered()
+
+```
+
+#Which topics are associated with each verse?
+```{r}
+verse_gamma <- tidy(verse_lda, matrix = "gamma")
+verse_gamma
+
+verse_gamma <- verse_gamma %>%
+  separate(document, c("band", "verse"), sep = "_", convert = TRUE)
+
+verse_gamma
+
+# reorder titles in order of topic 1, topic 2,...topic 10, etc before plotting
+verse_gamma %>%
+  mutate(title = reorder(band, gamma * topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot() +
+  facet_wrap(~ title)
+
+#we see that many verses of many bands are associated with various topics. No band is distinctively
+#covered by a single topic.
+```
+
+#topic most associated with each verse
+```{r}
+verse_classifications <- verse_gamma %>%
+  group_by(band, verse) %>%
+  top_n(1, gamma) %>%
+  ungroup()
+
+verse_classifications
+```
+
+#comparing consensus topic for each band i.e. the most common topic among its verses to
+#see which were the most misidentified
+```{r}
+band_topics <- verse_classifications %>%
+  count(band, topic) %>%
+  group_by(band) %>%
+  top_n(1, n) %>%
+  ungroup() %>%
+  transmute(consensus = band, topic)
+
+verse_classifications %>%
+  inner_join(band_topics, by = "topic") %>%
+  filter(band != consensus)
+
+```
+
+#confusion matrix
+```{r}
+assignments <- augment(verse_lda, data = verse_dtm)
+assignments
+
+assignments <- assignments %>%
+  separate(document, c("band", "verse"), sep = "_", convert = TRUE) %>%
+  inner_join(band_topics, by = c(".topic" = "topic"))
+
+assignments
+
+#here true band is "band" and consensus band is "consensus"
+assignments %>%
+  count(band, consensus, wt = count) %>%
+  group_by(band) %>%
+  mutate(percent = n / sum(n)) %>%
+  ggplot(aes(consensus, band, fill = percent)) +
+  geom_tile() +
+  scale_fill_gradient2(high = "red", label = percent_format()) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(x = "band's words were assigned to",
+       y = "band's words came from",
+       fill = "% of assignments")
+
+#AC/DC is the most distinct. Led Zeppelin and Eagles are misclassified as each other
+#(more so than other misclassifications).
+#Very few verses/words of Pink Floyd were identified as The Rolling Stones.
+#No band has the chance of being identified as another more than chance of being identified as itself.
+```
+#df not to be touched:
+#song_lyrics
+#song_lyrics_ele_words
+#song_lyrics_words
+#verse_words
